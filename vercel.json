@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "client/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "client/build/index.html"
+    }
+  ],
+  "env": {
+    "REACT_APP_API_URL": "@react_app_api_url",
+    "REACT_APP_GOOGLE_CLIENT_ID": "@react_app_google_client_id",
+    "REACT_APP_STRIPE_PUBLISHABLE_KEY": "@react_app_stripe_publishable_key",
+    "REACT_APP_CLOUDINARY_CLOUD_NAME": "@react_app_cloudinary_cloud_name",
+    "REACT_APP_CLOUDINARY_UPLOAD_PRESET": "@react_app_cloudinary_upload_preset"
+  }
+}

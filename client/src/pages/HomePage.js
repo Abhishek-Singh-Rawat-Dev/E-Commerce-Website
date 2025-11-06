@@ -12,6 +12,7 @@ import {
 import { fetchFeaturedProducts, fetchCategories } from '../store/slices/productSlice';
 import ProductCard from '../components/ui/ProductCard';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import AIRecommendations from '../components/ai/AIRecommendations';
 
 const HomePage = () => {
   const dispatch = useDispatch();
@@ -213,6 +214,9 @@ const HomePage = () => {
           )}
         </div>
       </section>
+
+      {/* AI Recommendations Section */}
+      <AIRecommendations title="AI Recommendations For You" />
 
       {/* Newsletter Section */}
       <section className="py-16 bg-amazon-dark text-white">

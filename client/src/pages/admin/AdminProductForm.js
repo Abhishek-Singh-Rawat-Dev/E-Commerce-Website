@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useForm } from 'react-hook-form';
-import { ArrowLeft, Upload, X } from 'lucide-react';
+import { ArrowLeft, Upload, X, Sparkles } from 'lucide-react';
+import axios from 'axios';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { api } from '../../config/api';
 import toast from 'react-hot-toast';
@@ -14,6 +15,7 @@ const AdminProductForm = () => {
   
   const [loading, setLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState([]);
+  const [generatingDescription, setGeneratingDescription] = useState(false);
   const { user, isAuthenticated, loading: authLoading } = useSelector(state => state.auth);
 
   const {
@@ -121,6 +123,61 @@ const AdminProductForm = () => {
     setImagePreview(prev => prev.filter((_, i) => i !== index));
   };
 
+  const generateAIDescription = async () => {
+    try {
+      const name = watch('name');
+      const category = watch('category') || 'General';
+      const price = watch('price') || 0;
+      const features = watch('features');
+
+      if (!name || name.trim() === '') {
+        toast.error('Please enter a product name first');
+        return;
+      }
+
+      setGeneratingDescription(true);
+      toast.loading('Generating description with AI... This may take 30-60 seconds as we research the product.', { id: 'generating' });
+      
+      // Create a custom axios instance with longer timeout for this request
+      const descriptionApi = axios.create({
+        baseURL: api.defaults.baseURL,
+        timeout: 90000, // 90 seconds for AI description generation
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      const response = await descriptionApi.post('/api/ai/generate-description', {
+        name: name.trim(),
+        category: category || 'General',
+        price: parseFloat(price) || 0,
+        features: features ? features.split(',').map(f => f.trim()).filter(f => f) : []
+      });
+
+      if (response.data.success) {
+        // Ensure description doesn't exceed 5000 characters (database limit)
+        let description = response.data.description || '';
+        if (description.length > 5000) {
+          description = description.substring(0, 4997) + '...';
+          toast.error('Description was truncated to fit database limit');
+        }
+        setValue('description', description);
+        toast.dismiss('generating');
+        toast.success('AI description generated successfully!');
+      } else {
+        toast.dismiss('generating');
+        toast.error('Failed to generate description');
+      }
+    } catch (error) {
+      console.error('Error generating description:', error);
+      toast.dismiss('generating');
+      toast.error(error.response?.data?.message || 'Failed to generate description. Please try again.');
+    } finally {
+      setGeneratingDescription(false);
+    }
+  };
+
   if (authLoading || loading) {
     return <LoadingSpinner size="xl" className="min-h-screen" />;
   }
@@ -212,18 +269,32 @@ const AdminProductForm = () => {
 
           {/* Description */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Description *
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Description *
+              </label>
+              <button
+                type="button"
+                onClick={generateAIDescription}
+                disabled={generatingDescription || !watch('name') || watch('name')?.trim() === ''}
+                className="flex items-center space-x-2 px-3 py-1.5 text-sm bg-amazon-orange text-white rounded-md hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span>{generatingDescription ? 'Generating...' : 'Generate with AI'}</span>
+              </button>
+            </div>
             <textarea
               {...register('description', { required: 'Description is required' })}
               rows={4}
               className="input-field"
-              placeholder="Enter product description"
+              placeholder="Enter product description or click 'Generate with AI' to create one automatically"
             />
             {errors.description && (
               <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
             )}
+            <p className="mt-1 text-xs text-gray-500">
+              Enter a product name and click "Generate with AI" to create a professional description. The AI will research the product and generate a detailed description based on real product information.
+            </p>
           </div>
 
           {/* Price and Original Price */}

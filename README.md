@@ -24,6 +24,14 @@ A comprehensive e-commerce platform inspired by Amazon, built with modern web te
 - **Data Validation**: Input validation and sanitization
 - **Error Handling**: Comprehensive error handling and logging
 
+### 🤖 AI Features
+- **AI Chatbot**: 24/7 customer support assistant powered by **Google Gemini 1.5 Pro**
+- **AI Product Recommendations**: Personalized product suggestions based on user behavior (OpenAI GPT-3.5-turbo)
+- **AI Semantic Search**: Enhanced product search that understands user intent (OpenAI GPT-3.5-turbo)
+- **AI Description Generator**: Auto-generate professional product descriptions (Admin, OpenAI GPT-3.5-turbo)
+- **AI Sentiment Analysis**: Analyze product review sentiments (OpenAI GPT-3.5-turbo)
+- **📖 For complete AI documentation, see [AI_DOCUMENTATION.md](./AI_DOCUMENTATION.md)**
+
 ### 🎯 Key Components
 
 #### Frontend (React + Tailwind CSS)
@@ -84,6 +92,8 @@ A comprehensive e-commerce platform inspired by Amazon, built with modern web te
    STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
    EMAIL_USER=your_email@gmail.com
    EMAIL_PASS=your_email_password
+   GEMINI_API_KEY=your_gemini_api_key_here
+   OPENAI_API_KEY=your_openai_api_key_here
    ```
    
    **📖 For detailed instructions on getting API credentials, see [DEPLOY.md](./DEPLOY.md)**
@@ -191,6 +201,13 @@ amazon-clone/
 - `PUT /api/admin/users/:id/role` - Update user role
 - `DELETE /api/admin/users/:id` - Delete user
 
+### AI
+- `POST /api/ai/chat` - AI Customer Support Chat
+- `GET /api/ai/recommendations` - Get AI-powered product recommendations
+- `GET /api/ai/search` - AI-powered semantic search
+- `POST /api/ai/generate-description` - Generate product description using AI (Admin)
+- `POST /api/ai/analyze-sentiment` - Analyze review sentiment
+
 ## 🎨 UI Components
 
 ### Layout Components
@@ -221,6 +238,8 @@ amazon-clone/
 - `CLOUDINARY_*`: Cloudinary configuration for image uploads
 - `STRIPE_*`: Stripe configuration for payments
 - `EMAIL_*`: Email configuration for notifications
+- `GEMINI_API_KEY`: Google Gemini API key for chatbot (required for AI chatbot)
+- `OPENAI_API_KEY`: OpenAI API key for other AI features (recommendations, search, descriptions, sentiment analysis)
 
 ### Database Models
 - **User**: User authentication and profile data

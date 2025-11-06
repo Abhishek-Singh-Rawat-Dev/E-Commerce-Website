@@ -9,6 +9,7 @@ import Footer from './components/layout/Footer';
 import Sidebar from './components/layout/Sidebar';
 import CartSidebar from './components/cart/CartSidebar';
 import LoadingSpinner from './components/ui/LoadingSpinner';
+import AIChatBot from './components/ai/AIChatBot';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -91,6 +92,9 @@ function App() {
       {/* Sidebars */}
       {sidebarOpen && <Sidebar />}
       {cartOpen && <CartSidebar />}
+
+      {/* AI Chat Bot */}
+      <AIChatBot />
     </div>
   );
 }

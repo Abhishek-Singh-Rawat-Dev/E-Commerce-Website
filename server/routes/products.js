@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Product = require('../models/Product');
 const { auth, adminAuth } = require('../middleware/auth');
+const { getProductRecommendations } = require('../services/aiService');
 
 const router = express.Router();
 
@@ -119,6 +120,55 @@ router.get('/categories', async (req, res) => {
   }
 });
 
+// @route   GET /api/products/recommendations
+// @desc    Get AI-powered product recommendations
+// @access  Public
+router.get('/recommendations', async (req, res) => {
+  try {
+    const { productId, category, userId } = req.query;
+    
+    // Get all active products
+    const allProducts = await Product.find({ isActive: true })
+      .select('_id name category price ratings sold description')
+      .lean();
+
+    // Build recommendation context
+    const viewedProducts = productId ? [productId] : [];
+    const userInterests = category ? [category] : [];
+    const cartItems = [];
+
+    // Get AI recommendations
+    const recommendedIds = await getProductRecommendations(
+      userInterests,
+      viewedProducts,
+      cartItems,
+      allProducts
+    );
+
+    // Fetch recommended products
+    const recommendedProducts = await Product.find({
+      _id: { $in: recommendedIds },
+      isActive: true
+    })
+      .populate('reviews.user', 'name avatar')
+      .limit(8);
+
+    // Sort by recommendation order
+    const sortedProducts = recommendedIds
+      .map(id => recommendedProducts.find(p => p._id.toString() === id))
+      .filter(p => p !== undefined);
+
+    res.json({
+      success: true,
+      products: sortedProducts,
+      count: sortedProducts.length
+    });
+  } catch (error) {
+    console.error('Get recommendations error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // @route   GET /api/products/:id
 // @desc    Get single product
 // @access  Public
@@ -223,7 +273,23 @@ router.post('/', auth, adminAuth, [
     });
   } catch (error) {
     console.error('Create product error:', error);
-    res.status(500).json({ message: 'Server error' });
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => ({
+        field: err.path,
+        message: err.message
+      }));
+      return res.status(400).json({ 
+        message: 'Validation error',
+        errors 
+      });
+    }
+    
+    res.status(500).json({ 
+      message: error.message || 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

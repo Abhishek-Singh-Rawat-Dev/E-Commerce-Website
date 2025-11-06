@@ -17,6 +17,7 @@ import { addToCart } from '../store/slices/cartSlice';
 import { addToWishlist } from '../store/slices/wishlistSlice';
 import ProductCard from '../components/ui/ProductCard';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import AIRecommendations from '../components/ai/AIRecommendations';
 import { convertAndFormat } from '../utils/currency';
 import toast from 'react-hot-toast';
 
@@ -376,6 +377,15 @@ const ProductDetailPage = () => {
             </div>
           </div>
         )}
+
+        {/* AI Recommendations */}
+        <div className="mt-16">
+          <AIRecommendations 
+            productId={currentProduct._id} 
+            category={currentProduct.category}
+            title="AI Recommendations For You"
+          />
+        </div>
       </div>
     </div>
   );

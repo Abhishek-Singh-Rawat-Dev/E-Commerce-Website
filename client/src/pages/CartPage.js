@@ -30,8 +30,14 @@ const CartPage = () => {
   };
 
   const shippingCost = totalPrice > 100 ? 0 : 10;
-  const tax = totalPrice * 0.1;
-  const finalTotal = totalPrice + shippingCost + tax;
+  // Platform fee: Fixed ₹100 (converted to selected currency)
+  // ₹100 = $1.20 USD (at rate 83.12)
+  const platformFeeInUSD = 100 / 83.12; // Approximately $1.20
+  const platformFee = convertPrice(platformFeeInUSD, userCurrency);
+  // Convert subtotal to selected currency, then add platform fee
+  const subtotalInCurrency = convertPrice(totalPrice, userCurrency);
+  // Total = Subtotal + Platform Fee only (shipping is separate)
+  const finalTotal = subtotalInCurrency + platformFee;
 
   if (items.length === 0) {
     return (
@@ -130,15 +136,15 @@ const CartPage = () => {
                 </div>
                 
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Tax</span>
-                  <span className="font-medium">{formatPrice(convertPrice(tax, userCurrency), userCurrency)}</span>
+                  <span className="text-gray-600">Platform Fee</span>
+                  <span className="font-medium">{formatPrice(platformFee, userCurrency)}</span>
                 </div>
                 
                 <div className="border-t border-gray-200 pt-4">
                   <div className="flex justify-between">
                     <span className="text-lg font-semibold text-gray-900">Total</span>
                     <span className="text-lg font-semibold text-amazon-orange">
-                      {formatPrice(convertPrice(finalTotal, userCurrency), userCurrency)}
+                      {formatPrice(finalTotal, userCurrency)}
                     </span>
                   </div>
                 </div>

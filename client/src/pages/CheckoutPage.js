@@ -15,6 +15,7 @@ import { clearCart, saveShippingAddress } from '../store/slices/cartSlice';
 import { createOrder } from '../store/slices/orderSlice';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { convertPrice, formatPrice, getCurrencyFromCountry } from '../utils/currency';
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
@@ -25,6 +26,8 @@ const CheckoutPage = () => {
 
   const { items, totalPrice, shippingAddress } = useSelector(state => state.cart);
   const { isAuthenticated, user } = useSelector(state => state.auth);
+  const [selectedCountry, setSelectedCountry] = useState(user?.address?.country || user?.nationality || 'India');
+  const [currency, setCurrency] = useState(user?.currency || getCurrencyFromCountry(selectedCountry));
 
   const {
     register,
@@ -33,6 +36,9 @@ const CheckoutPage = () => {
     setValue,
     watch
   } = useForm();
+
+  // Watch country field to update currency
+  const watchedCountry = watch('country');
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -50,8 +56,28 @@ const CheckoutPage = () => {
       Object.keys(shippingAddress).forEach(key => {
         setValue(key, shippingAddress[key]);
       });
+      if (shippingAddress.country) {
+        setSelectedCountry(shippingAddress.country);
+        setCurrency(getCurrencyFromCountry(shippingAddress.country));
+      }
+    } else if (user?.address?.country) {
+      setValue('country', user.address.country);
+      setSelectedCountry(user.address.country);
+      setCurrency(getCurrencyFromCountry(user.address.country));
+    } else if (user?.nationality) {
+      setValue('country', user.nationality);
+      setSelectedCountry(user.nationality);
+      setCurrency(getCurrencyFromCountry(user.nationality));
     }
-  }, [isAuthenticated, items.length, navigate, shippingAddress, setValue]);
+  }, [isAuthenticated, items.length, navigate, shippingAddress, setValue, user]);
+
+  // Update currency when country changes
+  useEffect(() => {
+    if (watchedCountry) {
+      setSelectedCountry(watchedCountry);
+      setCurrency(getCurrencyFromCountry(watchedCountry));
+    }
+  }, [watchedCountry]);
 
   const steps = [
     { id: 1, name: 'Shipping', icon: <Truck className="h-5 w-5" /> },
@@ -59,9 +85,20 @@ const CheckoutPage = () => {
     { id: 3, name: 'Review', icon: <CheckCircle className="h-5 w-5" /> }
   ];
 
-  const shippingCost = totalPrice > 100 ? 0 : 10;
-  const tax = totalPrice * 0.1;
-  const finalTotal = totalPrice + shippingCost + tax;
+  // Recalculate totalPrice from items to ensure accuracy
+  const calculatedTotalPrice = items.reduce((total, item) => {
+    return total + (item.price * item.quantity);
+  }, 0);
+  
+  const shippingCost = calculatedTotalPrice > 100 ? 0 : 10;
+  // Platform fee: Fixed ₹100 (converted to selected currency)
+  // ₹100 = $1.20 USD (at rate 83.12)
+  const platformFeeInUSD = 100 / 83.12; // Approximately $1.20
+  const platformFee = convertPrice(platformFeeInUSD, currency);
+  // Convert subtotal to selected currency, then add platform fee
+  const subtotalInCurrency = convertPrice(calculatedTotalPrice, currency);
+  // Total = Subtotal + Platform Fee only (shipping is separate)
+  const finalTotal = subtotalInCurrency + platformFee;
 
   const onShippingSubmit = (data) => {
     dispatch(saveShippingAddress(data));
@@ -81,12 +118,12 @@ const CheckoutPage = () => {
           product: item._id,
           quantity: item.quantity
         })),
-        shippingAddress,
+        shippingAddress: { ...shippingAddress, country: selectedCountry },
         paymentMethod,
-        itemsPrice: totalPrice,
-        taxPrice: tax,
+        itemsPrice: calculatedTotalPrice,
+        taxPrice: platformFeeInUSD, // Store platform fee in USD for backend
         shippingPrice: shippingCost,
-        totalPrice: finalTotal
+        totalPrice: calculatedTotalPrice + platformFeeInUSD // Total in USD = Subtotal + Platform Fee
       };
 
       // Dispatch order creation
@@ -192,6 +229,35 @@ const CheckoutPage = () => {
             <p className="text-red-600 text-sm mt-1">{errors.zipCode.message}</p>
           )}
         </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Country *
+        </label>
+        <select
+          {...register('country', { required: 'Country is required' })}
+          className="input-field"
+          onChange={(e) => {
+            setSelectedCountry(e.target.value);
+            setCurrency(getCurrencyFromCountry(e.target.value));
+          }}
+        >
+          <option value="India">India (₹ INR)</option>
+          <option value="United States">United States ($ USD)</option>
+          <option value="United Kingdom">United Kingdom (£ GBP)</option>
+          <option value="European Union">European Union (€ EUR)</option>
+          <option value="Australia">Australia (A$ AUD)</option>
+          <option value="Canada">Canada (C$ CAD)</option>
+          <option value="Japan">Japan (¥ JPY)</option>
+          <option value="China">China (¥ CNY)</option>
+        </select>
+        {errors.country && (
+          <p className="text-red-600 text-sm mt-1">{errors.country.message}</p>
+        )}
+        <p className="mt-1 text-xs text-gray-500">
+          Prices will be displayed in {currency} based on your country selection
+        </p>
       </div>
 
       <div>
@@ -306,7 +372,7 @@ const CheckoutPage = () => {
                   <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
                 </div>
                 <p className="font-semibold text-gray-900">
-                  ${(item.price * item.quantity).toFixed(2)}
+                  {formatPrice(convertPrice(item.price * item.quantity, currency), currency)}
                 </p>
               </div>
             ))}
@@ -315,21 +381,27 @@ const CheckoutPage = () => {
           <div className="border-t border-gray-200 mt-6 pt-6 space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal</span>
-              <span className="font-medium">${totalPrice.toFixed(2)}</span>
+              <span className="font-medium">
+                {formatPrice(convertPrice(calculatedTotalPrice, currency), currency)}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Shipping</span>
               <span className="font-medium">
-                {shippingCost === 0 ? 'Free' : `$${shippingCost.toFixed(2)}`}
+                {shippingCost === 0 ? 'Free' : formatPrice(convertPrice(shippingCost, currency), currency)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Tax</span>
-              <span className="font-medium">${tax.toFixed(2)}</span>
+              <span className="text-gray-600">Platform Fee</span>
+              <span className="font-medium">
+                {formatPrice(platformFee, currency)}
+              </span>
             </div>
             <div className="flex justify-between text-lg font-semibold border-t border-gray-200 pt-2">
               <span>Total</span>
-              <span className="text-amazon-orange">${finalTotal.toFixed(2)}</span>
+              <span className="text-amazon-orange">
+                {formatPrice(finalTotal, currency)}
+              </span>
             </div>
           </div>
         </div>
@@ -348,6 +420,7 @@ const CheckoutPage = () => {
               <p className="text-gray-600">
                 {shippingAddress?.city}, {shippingAddress?.state} {shippingAddress?.zipCode}
               </p>
+              <p className="text-gray-600">{shippingAddress?.country || selectedCountry}</p>
               <p className="text-gray-600">{shippingAddress?.phone}</p>
             </div>
           </div>
@@ -473,7 +546,7 @@ const CheckoutPage = () => {
                       <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
                     </div>
                     <p className="text-sm font-semibold text-gray-900">
-                      ${(item.price * item.quantity).toFixed(2)}
+                      {formatPrice(convertPrice(item.price * item.quantity, currency), currency)}
                     </p>
                   </div>
                 ))}
@@ -482,28 +555,34 @@ const CheckoutPage = () => {
               <div className="border-t border-gray-200 mt-6 pt-6 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="font-medium">${totalPrice.toFixed(2)}</span>
+                  <span className="font-medium">
+                    {formatPrice(convertPrice(calculatedTotalPrice, currency), currency)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Shipping</span>
                   <span className="font-medium">
-                    {shippingCost === 0 ? 'Free' : `$${shippingCost.toFixed(2)}`}
+                    {shippingCost === 0 ? 'Free' : formatPrice(convertPrice(shippingCost, currency), currency)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Tax</span>
-                  <span className="font-medium">${tax.toFixed(2)}</span>
+                  <span className="text-gray-600">Platform Fee</span>
+                  <span className="font-medium">
+                    {formatPrice(platformFee, currency)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-lg font-semibold border-t border-gray-200 pt-2">
                   <span>Total</span>
-                  <span className="text-amazon-orange">${finalTotal.toFixed(2)}</span>
+                  <span className="text-amazon-orange">
+                    {formatPrice(finalTotal, currency)}
+                  </span>
                 </div>
               </div>
 
-              {totalPrice < 100 && (
+              {calculatedTotalPrice < 100 && (
                 <div className="mt-4 p-3 bg-blue-50 rounded-md">
                   <p className="text-sm text-blue-800">
-                    Add ${(100 - totalPrice).toFixed(2)} more for free shipping!
+                    Add {formatPrice(convertPrice(100 - calculatedTotalPrice, currency), currency)} more for free shipping!
                   </p>
                 </div>
               )}

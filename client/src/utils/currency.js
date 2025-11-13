@@ -71,10 +71,35 @@ export const getCurrencySymbol = (currency = 'USD') => {
   return currencySymbols[currency] || '$';
 };
 
+/**
+ * Map country name to currency code
+ * @param {string} country - Country name
+ * @returns {string} - Currency code
+ */
+export const getCurrencyFromCountry = (country) => {
+  const countryToCurrency = {
+    'India': 'INR',
+    'United States': 'USD',
+    'United Kingdom': 'GBP',
+    'European Union': 'EUR',
+    'Australia': 'AUD',
+    'Canada': 'CAD',
+    'Japan': 'JPY',
+    'China': 'CNY',
+    // Add more countries as needed
+    'USA': 'USD',
+    'UK': 'GBP',
+    'US': 'USD',
+  };
+  
+  return countryToCurrency[country] || 'USD';
+};
+
 export default {
   convertPrice,
   formatPrice,
   convertAndFormat,
-  getCurrencySymbol
+  getCurrencySymbol,
+  getCurrencyFromCountry
 };
 

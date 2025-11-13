@@ -192,6 +192,115 @@ Create HTML email templates:
 
 ---
 
+### 4. AI Features Integration (Additional Responsibility)
+
+#### AI Service Setup
+- [ ] Install and configure AI SDKs (Google Gemini & OpenAI)
+- [ ] Set up AI API keys in environment
+- [ ] Create AI service utilities
+- [ ] Implement fallback mechanisms
+- [ ] Test AI features with API keys
+
+**Files to work on:**
+- `server/services/aiService.js`
+- `server/routes/ai.js`
+
+#### AI Features to Implement
+
+**1. AI Chatbot (Customer Support) - Powered by Gemini 1.5 Pro**
+- [ ] Implement chat support function using Google Gemini 1.5 Pro
+- [ ] Create chat endpoint: `POST /api/ai/chat`
+- [ ] Handle conversation history
+- [ ] Provide fallback responses when API key is missing
+- [ ] Test chatbot responses
+
+**2. AI Product Recommendations**
+- [ ] Implement recommendation function using OpenAI GPT-3.5-turbo
+- [ ] Create recommendations endpoint: `GET /api/ai/recommendations`
+- [ ] Consider user interests, viewed products, and cart items
+- [ ] Provide fallback to category-based recommendations
+- [ ] Test recommendation accuracy
+
+**3. AI Semantic Search**
+- [ ] Implement semantic search function
+- [ ] Create search endpoint: `GET /api/ai/search?query=...`
+- [ ] Understand natural language queries
+- [ ] Rank results by AI relevance
+- [ ] Fallback to text search if AI unavailable
+
+**4. AI Description Generator (Admin)**
+- [ ] Implement description generation function
+- [ ] Create endpoint: `POST /api/ai/generate-description` (Admin only)
+- [ ] Generate SEO-friendly product descriptions
+- [ ] Accept product name, category, price, and features
+- [ ] Return 150-250 word descriptions
+
+**5. AI Sentiment Analysis**
+- [ ] Implement sentiment analysis function
+- [ ] Create endpoint: `POST /api/ai/analyze-sentiment`
+- [ ] Classify reviews as positive, negative, or neutral
+- [ ] Provide confidence scores
+- [ ] Fallback to keyword-based analysis
+
+#### AI Routes to Create
+
+```javascript
+POST /api/ai/chat
+- AI chatbot for customer support
+- Body: { message, conversationHistory }
+- Returns: AI response
+
+GET /api/ai/recommendations
+- Get personalized product recommendations
+- Query: cartItems (optional)
+- Headers: Authorization (optional)
+- Returns: recommended products
+
+GET /api/ai/search?query=...
+- Semantic product search
+- Query: query (required)
+- Returns: products ranked by relevance
+
+POST /api/ai/generate-description
+- Generate product description (Admin only)
+- Headers: Authorization (required, admin)
+- Body: { name, category, price, features }
+- Returns: generated description
+
+POST /api/ai/analyze-sentiment
+- Analyze review sentiment
+- Headers: Authorization (required)
+- Body: { reviewText }
+- Returns: sentiment analysis
+```
+
+#### AI Configuration
+
+**Environment Variables:**
+```env
+# Google Gemini API (for Chatbot)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# OpenAI API (for other AI features)
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+**Dependencies to Install:**
+```bash
+npm install @google/generative-ai openai
+```
+
+#### AI Security & Best Practices
+- [ ] Never expose API keys to frontend
+- [ ] Implement rate limiting for AI endpoints
+- [ ] Add error handling for API failures
+- [ ] Log AI API usage for monitoring
+- [ ] Implement fallback mechanisms for all features
+- [ ] Validate input before sending to AI APIs
+- [ ] Set appropriate timeout limits
+
+---
+
 ## 🔧 Technical Stack You'll Use
 
 - **Stripe** - Payment processing
@@ -199,6 +308,8 @@ Create HTML email templates:
 - **Express.js** - Backend framework
 - **MongoDB/Mongoose** - Database
 - **Stripe Webhooks** - Payment events
+- **Google Gemini 1.5 Pro** - AI Chatbot (via @google/generative-ai)
+- **OpenAI GPT-3.5-turbo** - AI Recommendations, Search, Description Generation, Sentiment Analysis (via openai)
 
 ---
 
@@ -813,6 +924,380 @@ exports.sendWelcomeEmail = async (user) => {
 };
 ```
 
+### Example: AI Service
+```javascript
+// server/services/aiService.js
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
+
+// Initialize AI clients
+const gemini = process.env.GEMINI_API_KEY 
+  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  : null;
+
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+// AI Chatbot (Gemini 1.5 Pro)
+exports.chatSupport = async (message, conversationHistory = []) => {
+  try {
+    if (!gemini) {
+      // Fallback responses
+      return {
+        success: true,
+        response: "I'm here to help! Please configure GEMINI_API_KEY for full AI support.",
+      };
+    }
+
+    const model = gemini.getGenerativeModel({ model: 'gemini-1.5-pro' });
+    
+    const systemPrompt = `You are a helpful customer support assistant for an e-commerce store. 
+    Help customers with product inquiries, orders, shipping, returns, and general questions. 
+    Be friendly, professional, and concise.`;
+
+    const chat = model.startChat({
+      history: conversationHistory.map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }],
+      })),
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 200,
+      },
+    });
+
+    const result = await chat.sendMessage(message);
+    const response = await result.response;
+    const text = response.text();
+
+    return {
+      success: true,
+      response: text,
+      timestamp: new Date(),
+    };
+  } catch (error) {
+    console.error('AI Chat error:', error);
+    return {
+      success: false,
+      response: "I apologize, but I'm having trouble right now. Please try again later.",
+    };
+  }
+};
+
+// AI Product Recommendations
+exports.getProductRecommendations = async (products, userContext = {}) => {
+  try {
+    if (!openai) {
+      // Fallback to category-based recommendations
+      return products.slice(0, 8);
+    }
+
+    const productSummary = products.map(p => ({
+      id: p._id.toString(),
+      name: p.name,
+      category: p.category,
+      price: p.price,
+      rating: p.rating || 0,
+    }));
+
+    const prompt = `Given these products: ${JSON.stringify(productSummary)}
+    And user context: ${JSON.stringify(userContext)}
+    Recommend the top 8 most relevant products. Return only a JSON array of product IDs in order of relevance.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: 'You are a product recommendation engine. Return only JSON array of product IDs.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.7,
+    });
+
+    const recommendedIds = JSON.parse(completion.choices[0].message.content);
+    
+    // Sort products by AI's recommended order
+    const sortedProducts = recommendedIds
+      .map(id => products.find(p => p._id.toString() === id))
+      .filter(Boolean);
+
+    return sortedProducts.length > 0 ? sortedProducts : products.slice(0, 8);
+  } catch (error) {
+    console.error('AI Recommendations error:', error);
+    return products.slice(0, 8); // Fallback
+  }
+};
+
+// AI Semantic Search
+exports.semanticSearch = async (query, products) => {
+  try {
+    if (!openai) {
+      // Fallback to text search
+      return products.filter(p => 
+        p.name.toLowerCase().includes(query.toLowerCase()) ||
+        p.description?.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+
+    const productSummary = products.map(p => ({
+      id: p._id.toString(),
+      name: p.name,
+      description: p.description || '',
+      category: p.category,
+    }));
+
+    const prompt = `Search query: "${query}"
+    Products: ${JSON.stringify(productSummary)}
+    Return a JSON array of product IDs ranked by relevance to the search query.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: 'You are a semantic search engine. Return only JSON array of product IDs.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.3,
+    });
+
+    const rankedIds = JSON.parse(completion.choices[0].message.content);
+    
+    return rankedIds
+      .map(id => products.find(p => p._id.toString() === id))
+      .filter(Boolean);
+  } catch (error) {
+    console.error('AI Search error:', error);
+    // Fallback to text search
+    return products.filter(p => 
+      p.name.toLowerCase().includes(query.toLowerCase())
+    );
+  }
+};
+
+// AI Description Generator
+exports.generateProductDescription = async (productData) => {
+  try {
+    if (!openai) {
+      // Fallback template
+      return `Discover the ${productData.name} - a premium ${productData.category} product. 
+      ${productData.features?.join('. ') || 'High quality and reliable.'}`;
+    }
+
+    const prompt = `Generate a professional, SEO-friendly product description (150-250 words) for:
+    Name: ${productData.name}
+    Category: ${productData.category}
+    Price: $${productData.price}
+    Features: ${productData.features?.join(', ') || 'N/A'}
+    
+    Make it compelling, highlight key features, and include benefits.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: 'You are a professional product description writer.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.8,
+    });
+
+    return completion.choices[0].message.content;
+  } catch (error) {
+    console.error('AI Description error:', error);
+    return `Discover the ${productData.name} - a premium ${productData.category} product.`;
+  }
+};
+
+// AI Sentiment Analysis
+exports.analyzeReviewSentiment = async (reviewText) => {
+  try {
+    if (!openai) {
+      // Fallback keyword-based analysis
+      const positiveWords = ['good', 'great', 'excellent', 'amazing', 'love', 'perfect'];
+      const negativeWords = ['bad', 'terrible', 'awful', 'hate', 'worst', 'disappointed'];
+      
+      const lowerText = reviewText.toLowerCase();
+      const positiveCount = positiveWords.filter(w => lowerText.includes(w)).length;
+      const negativeCount = negativeWords.filter(w => lowerText.includes(w)).length;
+      
+      if (positiveCount > negativeCount) return { sentiment: 'positive', confidence: 0.7 };
+      if (negativeCount > positiveCount) return { sentiment: 'negative', confidence: 0.7 };
+      return { sentiment: 'neutral', confidence: 0.5 };
+    }
+
+    const prompt = `Analyze the sentiment of this product review: "${reviewText}"
+    Return JSON with "sentiment" (positive/negative/neutral) and "confidence" (0-1).`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: 'You are a sentiment analysis engine. Return only valid JSON.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.3,
+    });
+
+    return JSON.parse(completion.choices[0].message.content);
+  } catch (error) {
+    console.error('AI Sentiment error:', error);
+    return { sentiment: 'neutral', confidence: 0.5 };
+  }
+};
+```
+
+### Example: AI Routes
+```javascript
+// server/routes/ai.js
+const express = require('express');
+const { protect, admin } = require('../middleware/auth');
+const aiService = require('../services/aiService');
+const Product = require('../models/Product');
+
+const router = express.Router();
+
+// AI Chat
+router.post('/chat', async (req, res) => {
+  try {
+    const { message, conversationHistory = [] } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Message is required' 
+      });
+    }
+
+    const result = await aiService.chatSupport(message, conversationHistory);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Chat error',
+      error: error.message,
+    });
+  }
+});
+
+// AI Recommendations
+router.get('/recommendations', protect, async (req, res) => {
+  try {
+    const { cartItems } = req.query;
+    const products = await Product.find({});
+    
+    const userContext = {
+      userId: req.user._id.toString(),
+      cartItems: cartItems ? cartItems.split(',') : [],
+    };
+
+    const recommendations = await aiService.getProductRecommendations(
+      products,
+      userContext
+    );
+
+    res.json({
+      success: true,
+      products: recommendations.slice(0, 8),
+      count: recommendations.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Recommendations error',
+      error: error.message,
+    });
+  }
+});
+
+// AI Semantic Search
+router.get('/search', async (req, res) => {
+  try {
+    const { query } = req.query;
+    
+    if (!query) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Query is required' 
+      });
+    }
+
+    const products = await Product.find({});
+    const results = await aiService.semanticSearch(query, products);
+
+    res.json({
+      success: true,
+      products: results,
+      query,
+      count: results.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Search error',
+      error: error.message,
+    });
+  }
+});
+
+// AI Description Generator (Admin only)
+router.post('/generate-description', protect, admin, async (req, res) => {
+  try {
+    const { name, category, price, features } = req.body;
+    
+    if (!name || !category || !price) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name, category, and price are required' 
+      });
+    }
+
+    const description = await aiService.generateProductDescription({
+      name,
+      category,
+      price,
+      features: features || [],
+    });
+
+    res.json({
+      success: true,
+      description,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Description generation error',
+      error: error.message,
+    });
+  }
+});
+
+// AI Sentiment Analysis
+router.post('/analyze-sentiment', protect, async (req, res) => {
+  try {
+    const { reviewText } = req.body;
+    
+    if (!reviewText) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Review text is required' 
+      });
+    }
+
+    const analysis = await aiService.analyzeReviewSentiment(reviewText);
+
+    res.json({
+      success: true,
+      analysis,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Sentiment analysis error',
+      error: error.message,
+    });
+  }
+});
+
+module.exports = router;
+```
+
 ---
 
 ## 🧪 Testing Your Work
@@ -877,6 +1362,55 @@ transporter.sendMail({
 "
 ```
 
+### Testing AI Features
+```bash
+# Test AI Chat
+POST http://localhost:5001/api/ai/chat
+{
+  "message": "What is your return policy?",
+  "conversationHistory": []
+}
+
+# Test AI Recommendations (requires auth)
+GET http://localhost:5001/api/ai/recommendations?cartItems=product1,product2
+Headers: Authorization: Bearer YOUR_TOKEN
+
+# Test AI Semantic Search
+GET http://localhost:5001/api/ai/search?query=comfortable running shoes
+
+# Test AI Description Generator (Admin only)
+POST http://localhost:5001/api/ai/generate-description
+Headers: Authorization: Bearer ADMIN_TOKEN
+{
+  "name": "Wireless Headphones",
+  "category": "Electronics",
+  "price": 99.99,
+  "features": ["Noise Cancellation", "Bluetooth 5.0"]
+}
+
+# Test AI Sentiment Analysis
+POST http://localhost:5001/api/ai/analyze-sentiment
+Headers: Authorization: Bearer YOUR_TOKEN
+{
+  "reviewText": "This product is amazing! Great quality and fast shipping."
+}
+```
+
+**Testing Without API Keys:**
+- All AI features should work with fallback mechanisms
+- Chatbot returns helpful static responses
+- Recommendations fall back to category-based suggestions
+- Search falls back to text-based search
+- Description generator returns template descriptions
+- Sentiment analysis uses keyword-based detection
+
+**Testing With API Keys:**
+1. Add `GEMINI_API_KEY` to `.env` for chatbot
+2. Add `OPENAI_API_KEY` to `.env` for other features
+3. Test each endpoint with valid API keys
+4. Verify responses are AI-generated
+5. Test error handling when API fails
+
 ---
 
 ## 📞 Coordination Points
@@ -911,6 +1445,13 @@ You're doing great when:
 - [ ] All test payments work
 - [ ] Error handling is robust
 - [ ] Production payments work
+- [ ] AI chatbot responds correctly (with or without API key)
+- [ ] AI recommendations work with fallback
+- [ ] AI semantic search functions properly
+- [ ] AI description generator works for admins
+- [ ] AI sentiment analysis provides accurate results
+- [ ] All AI features have proper error handling
+- [ ] AI API keys are securely configured
 
 ---
 
@@ -920,12 +1461,20 @@ You're doing great when:
 - [Stripe Docs](https://stripe.com/docs)
 - [Nodemailer Docs](https://nodemailer.com/)
 - [Stripe Testing](https://stripe.com/docs/testing)
+- [Google Gemini API Docs](https://ai.google.dev/docs)
+- [OpenAI API Docs](https://platform.openai.com/docs)
+- [Google Generative AI SDK](https://www.npmjs.com/package/@google/generative-ai)
+- [OpenAI Node.js SDK](https://github.com/openai/openai-node)
 
 ### Common Issues
 1. **Stripe webhook not working**: Use Stripe CLI to forward
 2. **Email not sending**: Check Gmail app password
 3. **Payment amount mismatch**: Verify calculations
 4. **CORS on webhook**: Use raw body parser
+5. **AI chatbot not responding**: Check GEMINI_API_KEY in .env
+6. **AI recommendations not working**: Check OPENAI_API_KEY in .env
+7. **AI API rate limits**: Implement rate limiting and caching
+8. **AI responses too slow**: Add timeout limits and optimize prompts
 
 ---
 
